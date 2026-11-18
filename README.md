@@ -70,6 +70,7 @@ runs one in a detached tmux session with a log file. Run one GPU job at a time.
 |---|---|
 | Table 2 (pre-specified contrasts, training-variance analysis) | `scripts/analysis/compare_arms.py`, `operating_points.py` |
 | Table 3, operating-point, subset, programme and TBX11K-class tables | `scripts/analysis/operating_points.py` → `scripts/reporting/make_tables.py` |
+| No-shift reference, shared-split shift, symptomatic scenario, rank rules | `scripts/analysis/portability_reference.py` → `scripts/reporting/make_tables.py` |
 | Figure 2, recalibration checks | `scripts/analysis/recalibration.py`, `recalibration_checks.py` |
 | MIMIC TB site, one film per patient | `scripts/analysis/mimic_tb_site.py`, `mimic_tb_patient.py` |
 | Naija-CXR flag rates | `scripts/analysis/naija_site.py` |

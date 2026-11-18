@@ -298,6 +298,28 @@ def main() -> None:
     contrasts(out, b)
 
 
+def training_variance_interval(point: float, se_patient: float, per_seed: np.ndarray) -> dict:
+    """95 % interval adding between-seed variance / k to the test-patient variance.
+
+    Only the between-seed component is estimated from k - 1 degrees of freedom, so the reference
+    is a t distribution with Welch-Satterthwaite degrees of freedom.
+    """
+    k = len(per_seed)
+    seeds = float(np.var(per_seed, ddof=1)) / k
+    total = seeds + se_patient**2
+    df = float(total**2 / (seeds**2 / (k - 1))) if seeds > 0 else float("inf")
+    se = float(np.sqrt(total))
+    q = float(student_t.ppf(0.975, df))
+    return {
+        "estimate": point,
+        "lower": point - q * se,
+        "upper": point + q * se,
+        "p": float(2 * student_t.sf(abs(point) / se, df)),
+        "df": df,
+        "seeds": k,
+    }
+
+
 def contrasts(out: Path, b: int) -> None:
     """Seed-paired contrasts: seed s of arm A and seed s of arm B share the same source train /
     validation split, so the estimand is the mean over seeds of the per-seed AUROC difference
@@ -331,32 +353,31 @@ def contrasts(out: Path, b: int) -> None:
             roc_auc_score(ys, mats[1][:, j]) - roc_auc_score(ys, mats[0][:, j]) for j in range(k)
         ]
         point = float(np.mean(per_seed))
-        n, diffs = len(ys), []
+        n, diffs, later = len(ys), [], []
+        replicate = cid == "C1" and site == "tbx11k" and k == 10  # seeds 4-10 alone
         for _ in range(b):
             idx = rng.integers(0, n, n)
             yb = ys[idx]
             if yb.min() == yb.max():
                 continue
-            diffs.append(
-                np.mean(
-                    [
-                        roc_auc_score(yb, mats[1][idx, j]) - roc_auc_score(yb, mats[0][idx, j])
-                        for j in range(k)
-                    ]
-                )
-            )
+            each = [
+                roc_auc_score(yb, mats[1][idx, j]) - roc_auc_score(yb, mats[0][idx, j])
+                for j in range(k)
+            ]
+            diffs.append(np.mean(each))
+            if replicate:
+                later.append(np.mean(each[3:]))
         diffs = np.array(diffs)
+        if replicate:
+            d4 = np.array(per_seed[3:])
+            rep = training_variance_interval(float(d4.mean()), float(np.std(later, ddof=1)), d4)
+            (out / "c1_seeds_4_to_10.json").write_text(json.dumps(rep, indent=2))
         p = min(1.0, 2 * min((diffs <= 0).mean(), (diffs >= 0).mean()))
         p = max(p, 1 / len(diffs))  # a bootstrap p cannot be smaller than 1 / B
-        # Sensitivity analysis with training variance (seed as a random effect): the variance of
-        # the mean difference adds the between-seed variance of the per-seed differences / k to the
-        # test-patient variance; t with k - 1 degrees of freedom.
-        se_pat = float(diffs.std(ddof=1))
+        # Sensitivity analysis with training variance (seed as a random effect).
         sd_seed = float(np.std(per_seed, ddof=1)) if k > 1 else np.nan
-        se_tot = float(np.sqrt(se_pat**2 + sd_seed**2 / k))
-        tq = float(student_t.ppf(0.975, k - 1))
-        lo_t, hi_t = point - tq * se_tot, point + tq * se_tot
-        p_t = float(2 * student_t.sf(abs(point) / se_tot, k - 1))
+        tv = training_variance_interval(point, float(diffs.std(ddof=1)), np.array(per_seed))
+        lo_t, hi_t, p_t = tv["lower"], tv["upper"], tv["p"]
         rows.append(
             {
                 "id": cid,
@@ -374,6 +395,7 @@ def contrasts(out: Path, b: int) -> None:
                 "lower_tv": lo_t,
                 "upper_tv": hi_t,
                 "p_tv": p_t,
+                "df_tv": tv["df"],
                 "verdict_tv": "B" if lo_t > 0 else ("A" if hi_t < 0 else "n.s."),
                 "seeds_favour_b": int(sum(d > 0 for d in per_seed)),
                 "per_seed": " ".join(f"{d:+.3f}" for d in per_seed),
