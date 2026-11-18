@@ -210,7 +210,10 @@ def score(out: Path, specs: list[str]) -> None:
         for run in sorted(glob.glob(str(Path(pattern).expanduser()))):
             run = Path(run)
             print(f"== {label}: {run}", flush=True)
-            d = predict(run)
+            # Saved scores are reused, so a change of threshold rule never re-reads the images.
+            saved = out / f"pred_{re.sub(r'[^A-Za-z0-9]+', '_', label)}_{run.name}.csv"
+            cols = ["patient_id", "y_true", "p", "naija_class"]
+            d = pd.read_csv(saved)[cols] if saved.exists() else predict(run)
             thr = val_threshold(run)
             flag = d["p"] >= thr
             row = {

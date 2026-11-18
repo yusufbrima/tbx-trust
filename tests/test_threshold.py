@@ -15,3 +15,14 @@ def test_youden_and_sensitivity_thresholds() -> None:
     assert thr_s == pytest.approx(0.25) and ((p >= thr_s)[y == 1]).all()
     with pytest.raises(ValueError):
         select_threshold(np.zeros(4), p[:4])
+
+
+def test_sensitivity_threshold_is_the_highest_score_reaching_the_target() -> None:
+    # Ten positives in a row above all negatives: the ROC curve is one vertical segment, so
+    # 90 % sensitivity is first reached at the ninth-highest positive score.
+    pos = np.linspace(0.99, 0.90, 10)
+    neg = np.linspace(0.50, 0.10, 10)
+    y = np.r_[np.ones(10), np.zeros(10)]
+    thr = select_threshold(y, np.r_[pos, neg], "sensitivity", target_sensitivity=0.9)
+    assert thr == pytest.approx(pos[8])
+    assert (pos >= thr).mean() == pytest.approx(0.9)

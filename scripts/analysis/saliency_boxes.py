@@ -65,13 +65,7 @@ def analyse(label: str, run: Path, bx: dict) -> pd.DataFrame:
     keep = np.flatnonzero((site == "tbx11k") & (view.y == 1) & stem.isin(bx.keys()).to_numpy())
     sub = view.subset(keep)
     model = Classifier.load(run / "model.pkl")
-    v = pd.read_csv(run / "predictions_val.csv")
-    thr = select_threshold(
-        v["y_true"].to_numpy(),
-        v[[c for c in v if c.startswith("prob_")][-1]].to_numpy(),
-        method="sensitivity",
-        target_sensitivity=0.9,
-    )
+    thr = plan_threshold(run)
     exp = GradCAMExplainer(model, target_classes=[1], batch_size=8).explain(sub)
     maps = np.clip(exp.attributions[:, 0], 0, None)
     rows = []
@@ -101,18 +95,48 @@ def analyse(label: str, run: Path, bx: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def plan_threshold(run: Path) -> float:
+    v = pd.read_csv(run / "predictions_val.csv")
+    return select_threshold(
+        v["y_true"].to_numpy(),
+        v[[c for c in v if c.startswith("prob_")][-1]].to_numpy(),
+        method="sensitivity",
+        target_sensitivity=0.9,
+    )
+
+
+def reflag(out: Path, specs: list[str]) -> pd.DataFrame:
+    """Recompute only the ``flagged`` column from saved predictions (no Grad-CAM, no GPU)."""
+    per = pd.read_csv(out / "per_image.csv")
+    dirs = {s.split("=", 1)[0]: Path(s.split("=", 1)[1]).expanduser().parent for s in specs}
+    for (label, name), idx in per.groupby(["model", "run"]).groups.items():
+        run = dirs[label] / name
+        t = pd.read_csv(run / "predictions_test.csv")
+        t = t[t["site"] == "tbx11k"].set_index("patient_id")
+        prob = t[[c for c in t if c.startswith("prob_")][-1]]
+        per.loc[idx, "flagged"] = per.loc[idx, "image"].map(prob).to_numpy() >= plan_threshold(run)
+    per["flagged"] = per["flagged"].astype(bool)
+    per.to_csv(out / "per_image.csv", index=False)
+    return per
+
+
 def main() -> None:
-    out = Path(sys.argv[1]).expanduser()
+    redo = sys.argv[1] == "reflag"
+    args = sys.argv[2:] if redo else sys.argv[1:]
+    out = Path(args[0]).expanduser()
     out.mkdir(parents=True, exist_ok=True)
-    bx = boxes()
-    frames = []
-    for spec in sys.argv[2:]:
-        label, pattern = spec.split("=", 1)
-        for run in sorted(glob.glob(str(Path(pattern).expanduser()))):
-            print(f"== {label}: {run}", flush=True)
-            frames.append(analyse(label, Path(run), bx))
-            pd.concat(frames).to_csv(out / "per_image.csv", index=False)
-    per = pd.concat(frames)
+    if redo:
+        per = reflag(out, args[1:])
+    else:
+        bx = boxes()
+        frames = []
+        for spec in args[1:]:
+            label, pattern = spec.split("=", 1)
+            for run in sorted(glob.glob(str(Path(pattern).expanduser()))):
+                print(f"== {label}: {run}", flush=True)
+                frames.append(analyse(label, Path(run), bx))
+                pd.concat(frames).to_csv(out / "per_image.csv", index=False)
+        per = pd.concat(frames)
     summ = (
         per.groupby(["model", "kind"])
         .agg(

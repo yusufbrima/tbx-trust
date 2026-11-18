@@ -97,7 +97,7 @@ def datasets_table() -> str:
             "source; external for Shenzhen-trained models",
             "curated: healthy / sick non-TB / TB",
             "digital",
-            "radiologist category and TB boxes (active, obsolete)",
+            "microbiology as reported by the dataset's authors (results not released); radiologist TB boxes (active, latent)",
             "image",
             len(tbx),
             int((tbx["tb"] == "tb").sum()),
@@ -162,7 +162,9 @@ def decisions_table() -> str:
         train = "TBX11K" if r["id"] == "C5" else "Shenzhen"
         holm = "--" if pd.isna(t["p_holm_tv"]) else pval(t["p_holm_tv"])
         v_tv = t["verdict_tv"] if pd.isna(t["p_holm_tv"]) or t["p_holm_tv"] < 0.05 else "n.s."
-        fam = {"confirmatory": "conf.", "supporting": "supp.", "exploratory": "expl."}[r["family"]]
+        fam = {"confirmatory": "exposed", "supporting": "supp.", "exploratory": "expl."}[r["family"]]
+        if r["family"] == "confirmatory" and r["site"] == "tbx11k":
+            fam = "indep."  # the only confirmatory site no development decision touched
         lines.append(
             f"  {r['id']} ({fam}) & {train} $\\rightarrow$ {SITE[r['site']]} & {tex(ARM.get(r['arm_a'], r['arm_a']))} & "
             f"{tex(ARM.get(r['arm_b'], r['arm_b']))} & {r['auroc_a']:.3f} & {r['auroc_b']:.3f} & "
@@ -172,11 +174,12 @@ def decisions_table() -> str:
         )
     return (
         "\\begin{table*}[t]\n\\centering\n"
-        "\\caption{Pre-specified hypotheses (C1, C2, C5 confirmatory; C3--C4 supporting) and exploratory "
-        "foundation-model references (C7, added after the plan was written). Pre-specified analysis (primary): seed-ensemble "
+        "\\caption{Pre-specified hypotheses and exploratory foundation-model references (C7, added after the plan "
+        "was written). indep.: confirmatory, on the site no development decision touched; exposed: pre-specified, "
+        "on a site that development decisions had seen; supp.: supporting; expl.: exploratory. Pre-specified analysis (primary): seed-ensemble "
         "AUROCs, test-patient bootstrap 95\\% CI and the pre-specified verdict. Training-variance analysis "
         "(sensitivity analysis; Section~\\ref{sec:methods}): mean seed-paired difference, CI with between-seed "
-        "variance, seeds favouring B, Holm $p$ within C1, C2, C5, and its own verdict. C5 arms use settings "
+        "variance, seeds favouring B, Holm $p$ within C1, C2, C5, and its own verdict; C1 on TBX11K: ten seed pairs. C5 arms use settings "
         "re-tuned on TBX11K validation only.}\n\\label{tab:decisions}\n"
         "{\\resizebox{\\linewidth}{!}{\\footnotesize\\setlength{\\tabcolsep}{3pt}\\begin{tabular}{llllcccccccc}\n\\toprule\n"
         " & & & & \\multicolumn{4}{c}{Pre-specified (ensemble)} & \\multicolumn{4}{c}{Training variance (single model)} \\\\\n"
@@ -202,6 +205,7 @@ def run_summary(o: pd.DataFrame, population: str) -> pd.DataFrame:
         sens=("sens", "mean"), sens_min=("sens", "min"), sens_max=("sens", "max"),
         spec=("spec", "mean"), spec_min=("spec", "min"), spec_max=("spec", "max"),
         oracle=("oracle_spec90", "mean"), cost=("spec_cost_of_shift", "mean"),
+        run_auroc=("auroc", "mean"),
         who=("who_min", "sum"), who_ci=("who_min_ci", "sum"),
         n_tb=("n_tb", "first"), n_non_tb=("n_non_tb", "first"),
     ).reset_index()  # fmt: skip
@@ -210,25 +214,29 @@ def run_summary(o: pd.DataFrame, population: str) -> pd.DataFrame:
 
 def operating_table() -> str:
     s = run_summary(read(A / "operating_points.csv"), "all")
-    lines = [
-        f"  {tex(r['arm'])} & {SITE[r['site']]} & {r['auroc']:.3f} & "
-        f"{pct(r['sens'])} ({pct(r['sens_min'])}--{pct(r['sens_max'])}) & {100 * (r['sens'] - 0.9):+.0f} & "
-        f"{pct(r['spec'])} ({pct(r['spec_min'])}--{pct(r['spec_max'])}) & {pct(r['oracle'])} & "
-        f"{100 * r['cost']:+.0f} & {int(r['who'])}/{int(r['runs'])} & {int(r['who_ci'])}/{int(r['runs'])} \\\\"
-        for _, r in s.iterrows()
-    ]
+    lines = []
+    for _, r in s.iterrows():
+        bf = (lambda x: f"\\textbf{{{x}}}") if r["who_ci"] > 0 else (lambda x: x)
+        lines.append(
+            f"  {bf(tex(r['arm']))} & {bf(SITE[r['site']])} & {r['run_auroc']:.3f} & {r['auroc']:.3f} & "
+            f"{bf(pct(r['sens']))} ({pct(r['sens_min'])}--{pct(r['sens_max'])}) & {100 * (r['sens'] - 0.9):+.0f} & "
+            f"{bf(pct(r['spec']))} ({pct(r['spec_min'])}--{pct(r['spec_max'])}) & {pct(r['oracle'])} & "
+            f"{100 * r['cost']:+.0f} & {int(r['who'])}/{int(r['runs'])} & "
+            f"{bf(str(int(r['who_ci'])) + '/' + str(int(r['runs'])))} \\\\"
+        )
     return (
         "\\begin{table*}[t]\n\\centering\n"
         "\\caption{Deployed operating points of single runs, each at its own source threshold (90\\% "
-        "sensitivity on its validation split). AUROC: seed ensemble. Sensitivity and specificity: mean over "
-        "runs (range), \\%. Sens.\\ error: delivered minus intended sensitivity; oracle: best specificity at "
+        "sensitivity on its validation split). The single run is the estimand: run AUROC, sensitivity and "
+        "specificity are means over the same runs (range, \\%); the ensemble AUROC is shown for reference and is not "
+        "a deployed model. Sens.\\ error: delivered minus intended sensitivity; oracle: best specificity at "
         "90\\% sensitivity on the site's ROC; spec.\\ cost: oracle minus delivered specificity (points). "
         "Runs meeting the WHO minimum (90\\%/70\\%) on the point estimate and on both exact 95\\% lower "
-        "bounds.}\n"
+        "bounds. Bold: the only arm and site with runs meeting the target on both bounds.}\n"
         "\\label{tab:operating}\n{\\resizebox{\\linewidth}{!}{\\footnotesize\\setlength{\\tabcolsep}{3pt}"
-        "\\begin{tabular}{llcccccccc}\n\\toprule\n"
-        " & & & & & & & & \\multicolumn{2}{c}{Runs meeting} \\\\\n\\cmidrule(lr){9-10}\n"
-        "Model & Site & AUROC & Sensitivity & Sens.\\ error & Specificity & Oracle spec. & Spec.\\ cost & "
+        "\\begin{tabular}{llccccccccc}\n\\toprule\n"
+        " & & \\multicolumn{2}{c}{AUROC} & & & & & & \\multicolumn{2}{c}{Runs meeting} \\\\\n\\cmidrule(lr){3-4}\\cmidrule(lr){10-11}\n"
+        "Model & Site & Run & Ens. & Sensitivity & Sens.\\ error & Specificity & Oracle spec. & Spec.\\ cost & "
         "Point & Bounds \\\\\n\\midrule\n"
         + "\n".join(lines)
         + "\n\\bottomrule\n\\end{tabular}}}\n\\end{table*}\n"
@@ -254,8 +262,9 @@ def programme_table() -> str:
         "\\caption{What the deployed operating points of Table~\\ref{tab:operating} would mean for a programme, per "
         "1,000 people screened at 1\\% (community screening) and 5\\% (facility triage) TB prevalence: Xpert "
         "referrals, tests per TB case detected, cases missed (5\\%), and cartridge cost per case detected at each prevalence (US\\$7.97 "
-        "per cartridge); means over single runs. Sensitivity and specificity are carried from radiologically "
-        "labelled, case--control sites, so these are illustrations, not programme estimates.}\n"
+        "per cartridge). Every quantity is computed for each run and then averaged over runs, so a mean of ratios such as tests per case "
+        "is not the ratio of the mean referrals to the mean cases detected. Sensitivity and specificity are carried from "
+        "case--control sites without a verifiable bacteriological reference, so these are illustrations, not programme estimates.}\n"
         "\\label{tab:programme}\n"
         "{\\resizebox{\\linewidth}{!}{\\footnotesize\\begin{tabular}{llccccccc}\n\\toprule\n"
         " & & \\multicolumn{3}{c}{1\\% prevalence} & \\multicolumn{4}{c}{5\\% prevalence} \\\\\n"
@@ -280,12 +289,13 @@ def tbx11k_table() -> str:
         "\\begin{table}[t]\n\\centering\n"
         f"\\caption{{Shenzhen-trained models on TBX11K by image class (means over single runs): AUROC of TB against "
         f"healthy and against sick-but-non-TB images, and the share flagged (\\%) at the deployed threshold, for healthy (3,800), "
-        f"sick-but-non-TB (3,662), active TB ({n_act}) and obsolete (healed) TB ({n_obs}) images.}}\n"
+        f"sick-but-non-TB (3,662), active TB ({n_act}) and latent TB only ({n_obs}) images; the one remaining TB image has no lesion box and "
+        f"counts only as TB.}}\n"
         "\\label{tab:tbx11k}\n{\\resizebox{\\linewidth}{!}{\\footnotesize\\setlength{\\tabcolsep}{3pt}"
         "\\begin{tabular}{lcccccc}\n\\toprule\n"
         " & \\multicolumn{2}{c}{AUROC, TB vs} & \\multicolumn{4}{c}{Flagged as TB (\\%)} \\\\\n"
         "\\cmidrule(lr){2-3}\\cmidrule(lr){4-7}\n"
-        "Model & healthy & sick non-TB & Healthy & Sick non-TB & Active TB & Healed TB \\\\\n\\midrule\n"
+        "Model & healthy & sick non-TB & Healthy & Sick non-TB & Active TB & Latent TB \\\\\n\\midrule\n"
         + "\n".join(lines)
         + "\n\\bottomrule\n\\end{tabular}}}\n\\end{table}\n"
     )
@@ -391,14 +401,14 @@ def saliency_boxes_table() -> str:
     return (
         "\\begin{table}[h]\n\\centering\n"
         "\\caption{Lesion-level Grad-CAM of Shenzhen-trained models on TBX11K's TB images, against the "
-        f"radiologists' boxes ({n['active']} images with an active lesion, {n['obsolete']} with healed lesions "
+        f"radiologists' boxes ({n['active']} images with an active lesion, {n['obsolete']} with latent lesions "
         "only; means over runs). Ratio: share of saliency inside the boxes divided by the boxes' share of the "
         "image (1 = no preference). Pointing: saliency peak inside a box (16-pixel margin), \\%. Flagged: share "
         "flagged at the deployed threshold, \\%.}\n\\label{tab:lesions}\n"
         "{\\footnotesize\\setlength{\\tabcolsep}{3pt}\\begin{tabular}{lcccccc}\n\\toprule\n"
         " & \\multicolumn{2}{c}{Ratio} & \\multicolumn{2}{c}{Pointing} & \\multicolumn{2}{c}{Flagged} \\\\\n"
         "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-7}\n"
-        "Model & active & healed & active & healed & active & healed \\\\\n\\midrule\n"
+        "Model & active & latent & active & latent & active & latent \\\\\n\\midrule\n"
         + "\n".join(lines)
         + "\n\\bottomrule\n\\end{tabular}}\n\\end{table}\n"
     )

@@ -1,13 +1,13 @@
 """Figure: Grad-CAM against TBX11K's radiologist-drawn TB boxes, two models on the same images.
 
 Images are drawn at random (fixed seed) from the TBX11K TB images with boxes: four with an active
-lesion and two with healed (obsolete) lesions only, so the figure is not a selection of good cases.
+lesion and two with latent (obsolete) lesions only, so the figure is not a selection of good cases.
 Each panel prints that image's box ratio (share of saliency inside the boxes / boxes' share of the
 image) and the model's TB probability. Grad-CAM exactly as in scripts/analysis/saliency_boxes.py.
 TBX11K is public (CC BY 4.0), so its images may be shown.
 
 Usage: python scripts/reporting/saliency_overlays.py OUT_STEM LABEL=RUN_DIR [LABEL=RUN_DIR ...]
-       --compact as the first argument: the first two active and the first healed image of the same
+       --compact as the first argument: the first two active and the first latent image of the same
        draw, models as rows, boxes drawn on the maps (main-text version).
 """
 
@@ -60,7 +60,7 @@ def maps_for(run: Path, stems: list[str]) -> tuple[np.ndarray, np.ndarray]:
 
 
 def compact(out: Path, stems: list[str], results: list, bx: dict) -> None:
-    cols = [stems[0], stems[1], stems[4]]  # first two active, first healed (same random draw)
+    cols = [stems[0], stems[1], stems[4]]  # first two active, first latent (same random draw)
     pos = [0, 1, 4]
     fig, axes = plt.subplots(len(results), 3, figsize=(6.6, 2.25 * len(results)))
     for r, (label, maps, probs) in enumerate(results):
@@ -80,7 +80,7 @@ def compact(out: Path, stems: list[str], results: list, bx: dict) -> None:
             if c == 0:
                 ax.set_ylabel(label, fontsize=8)
             if r == 0:
-                ax.set_title("active lesion" if c < 2 else "healed lesion only", fontsize=8)
+                ax.set_title("active lesion" if c < 2 else "latent lesion only", fontsize=8)
     fig.tight_layout()
     fig.savefig(out.with_suffix(".png"), dpi=170)
     fig.savefig(out.with_suffix(".pdf"))
@@ -124,9 +124,9 @@ def main() -> None:
             if r == 0:
                 ax.set_title("Image and boxes" if c == 0 else results[c - 1][0], fontsize=8)
             if c == 0:
-                ax.set_ylabel("active" if "active" in kinds else "healed only", fontsize=8)
+                ax.set_ylabel("active" if "active" in kinds else "latent only", fontsize=8)
     fig.suptitle("Grad-CAM for TB on TBX11K, Shenzhen-trained models (cyan: active lesion, "
-                 "yellow: healed lesion)", fontsize=8)  # fmt: skip
+                 "yellow: latent lesion)", fontsize=8)  # fmt: skip
     fig.tight_layout(rect=(0, 0, 1, 0.985))
     fig.savefig(out.with_suffix(".png"), dpi=170)
     fig.savefig(out.with_suffix(".pdf"))

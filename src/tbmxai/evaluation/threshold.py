@@ -33,7 +33,9 @@ def select_threshold(
     p = np.asarray(p_positive, dtype=float)
     if len(np.unique(y)) < 2:
         raise ValueError("Threshold selection needs both classes in the validation data.")
-    fpr, tpr, thr = roc_curve(y, p)
+    # Keep every ROC point: the default drops collinear points, which would skip the threshold that
+    # first reaches the target and return a lower one with the same validation specificity.
+    fpr, tpr, thr = roc_curve(y, p, drop_intermediate=False)
     thr = np.clip(thr, 0.0, 1.0)  # roc_curve's first threshold is +inf
     if method == "youden":
         best = int(np.argmax(tpr - fpr))
