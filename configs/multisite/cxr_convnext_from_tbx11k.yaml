@@ -1,0 +1,56 @@
+# Multi-site external validation, ConvNeXt-T with the NLM-tuned image settings: train on TBX11K (8,262 images), test on Shenzhen AND Montgomery.
+# Data: bash scripts/multisite/01_build.sh   (NLM + TBX11K recipes, merged, image cache)
+# Per-site test metrics: subgroups by site (report.html → Subgroups; tables/subgroups.csv).
+name: multisite_cxr_convnext_from_tbx11k
+seed: 42
+paths:
+  dataset: ${TBMXAI_MULTISITE:-~/data/tbmxai/tb_multisite}
+  output_root: ${TBMXAI_OUTPUT_ROOT:-~/tbmxai_runs}
+  image_cache: ${TBMXAI_IMAGE_CACHE:-~/data/tbmxai/cxr_cache}
+output_dir: ${output_root}
+
+data:
+  dataset: ${dataset}
+  label_column: tb                # non_tb / tb (NLM "normal" harmonised to non_tb)
+  use: [images]                   # TBX11K has no age/sex: image-only across sites
+
+view:
+  modalities: [imaging]
+  metadata_columns: [site, tbx_class]
+
+split:
+  name: external
+  params: {column: site, test_values: [shenzhen, montgomery], val_size: 0.15}
+
+model:
+  name: neural
+  params:
+    encoders:
+      imaging:
+        name: timm_vision
+        params: {backbone: convnext_tiny, pretrained: true, drop_rate: 0.2}
+    head: {dropout: 0.0705}
+    image: {size: 320, augment: true, in_chans: 1, cache_dir: "${image_cache}", cache_size: 512}
+
+training:
+  epochs: 25
+  batch_size: 32
+  num_workers: 4
+  precision: bf16-mixed
+  optimizer: {name: adamw, lr: 7.55e-4, weight_decay: 0.00476, encoder_lr_mult: 0.129}
+  scheduler: {name: cosine, warmup_epochs: 2, min_lr_ratio: 0.01}
+  early_stopping: {monitor: val_loss, patience: 8}
+  checkpoint: {save_top_k: 1, save_last: true}
+
+explain:
+  methods: [{name: grad_cam}]
+  samples: {split: test, n_per_class: 8}
+  target_classes: all
+
+evaluation:
+  n_bootstrap: 1000
+  threshold_selection: sensitivity   # fixed on source validation to reach the WHO TPP target …
+  target_sensitivity: 0.9            # … then applied unchanged to every external site
+
+subgroups: {columns: [site, tbx_class], min_size: 20}
+reporting: {writers: [json, tables, markdown, html], table_format: both}

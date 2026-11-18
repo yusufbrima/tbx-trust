@@ -1,0 +1,35 @@
+# Shenzhen + Montgomery TB chest X-ray sets (NLM; Jaeger et al. 2014) → standard dataset.
+#   tbmxai dataset build configs/datasets/nlm_tb.yaml ~/data/nlm_tb ~/data/tbmxai/nlm_tb
+# RAW holds ChinaSet_AllFiles.zip and NLM-MontgomeryCXRSet.zip (scripts/nlm_tb/01_download.sh).
+# Output is identical to the Python reference converter (adapter `nlm_tb_legacy`; tested).
+name: nlm_tb
+description: Shenzhen (China) + Montgomery County (USA) TB chest X-ray sets, NLM (Jaeger et al.
+  2014). One image per id; no patient identifiers.
+patient_ids: assumed            # one image per id: patient-level splitting cannot be guaranteed
+archives: ["*.zip"]
+
+records:
+  files: "**/CXR_png/*.png"     # lung masks (ManualMask/) share file names and are skipped
+  dedupe: patient_id
+  sort_by: patient_id
+
+fields:
+  patient_id: {from: filename, regex: '(?P<id>(?:CHN|MCU)CXR_\d+)'}
+  tb:         {from: filename, regex: '(?i)_(1)\.png$', map: {"1": tb}, default: normal}
+  site:       {from: field:patient_id, regex: '^([A-Z]+)_', map: {CHNCXR: shenzhen, MCUCXR: montgomery}}
+  reading_text: {from: file, glob: "**/ClinicalReadings/*.txt", lookup_by: stem, default: ""}
+  parsed:     {from: field:reading_text, parse: nlm_reading}    # → sex, age, reading
+  age_group:  {from: field:age, bins: [0, 18, 35, 50, 65, 200],
+               labels: ["<18", "18-34", "35-49", "50-64", "65+"], default: unknown}
+  sex:        {from: field:sex, default: unknown}
+  sex_male:   {from: field:sex, map: {M: 1.0, F: 0.0}, unmapped: missing}
+
+tables:
+  labels: [tb, site, sex, age, age_group]
+  tabular: [age, sex_male]
+  images: []
+  extra:
+    readings: [site, reading]   # the radiologist's finding states the diagnosis: never loaded
+
+labels:
+  tb: {classes: [normal, tb], description: TB manifestation (file suffix _1)}

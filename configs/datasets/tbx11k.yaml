@@ -1,0 +1,37 @@
+# TBX11K (Liu et al., CVPR 2020; CC BY 4.0) → standard dataset. https://mmcheng.net/tb/
+#   tbmxai dataset build configs/datasets/tbx11k.yaml ~/data/tbx11k ~/data/tbmxai/tbx11k
+# RAW holds TBX11K.zip (Google Drive, 3.3 GB; scripts/tbx11k/01_download.sh).
+#
+# Only TBX11K's own labelled images are used (8,400 = TBX11K_train + TBX11K_val):
+#   - imgs/extra/ is excluded: it contains Montgomery and Shenzhen images, which would
+#     leak the NLM sets into any multi-site experiment;
+#   - imgs/test/ has no released labels (online challenge).
+#   - 138 near-identical image pairs (126 pixel-identical, all "sick but non-TB"; 41 of
+#     them straddle TBX11K's own train/val lists) are reduced to one image each.
+# 512 × 512 PNGs; no age/sex and no patient identifiers.
+name: tbx11k
+description: TBX11K (Liu et al., CVPR 2020) labelled train + val images (8,400; 512x512).
+  Healthy, sick but non-TB, TB. Montgomery/Shenzhen 'extra' images excluded. No patient ids.
+patient_ids: assumed
+archives: ["TBX11K.zip"]
+
+records:
+  files: ["**/imgs/health/*.png", "**/imgs/sick/*.png", "**/imgs/tb/*.png"]
+  sort_by: patient_id
+  drop_duplicate_images: true
+
+fields:
+  patient_id: {from: stem, format: "tbx11k_{}"}
+  tbx_class:  {from: parent, map: {health: healthy, sick: sick_non_tb, tb: tb}}
+  tb:         {from: parent, map: {health: non_tb, sick: non_tb, tb: tb}}
+  site:       {from: const, value: tbx11k}
+  tbx11k_split: {from: list, lists: {train: TBX11K/TBX11K/lists/TBX11K_train.txt,
+                                     val: TBX11K/TBX11K/lists/TBX11K_val.txt}}
+
+tables:
+  labels: [tb, tbx_class, site, tbx11k_split]
+  images: []
+
+labels:
+  tb: {classes: [non_tb, tb], description: "Active or latent TB vs healthy / sick but non-TB"}
+  tbx_class: {classes: [healthy, sick_non_tb, tb], description: TBX11K image category}

@@ -1,0 +1,127 @@
+# Revision (target-site leakage fix): tune the TBX11K-trained ConvNeXt-T on TBX11K validation ONLY.
+# The pre-specified TBX11K-trained arms reused settings tuned on Shenzhen validation and were then tested on
+# Shenzhen. Shenzhen and Montgomery are the test split here and are never seen by the search.
+# Epochs capped at 12 (patience 4) during the search; the refit restores the pre-specified budget.
+name: multisite_convnext_from_tbx11k_tune
+seed: 42
+paths:
+  dataset: ${TBMXAI_MULTISITE:-~/data/tbmxai/tb_multisite}
+  output_root: ${TBMXAI_OUTPUT_ROOT:-~/tbmxai_runs}
+  image_cache: ${TBMXAI_IMAGE_CACHE:-~/data/tbmxai/cxr_cache}
+output_dir: ${output_root}
+data:
+  dataset: ${dataset}
+  label_column: tb
+  use:
+  - images
+view:
+  modalities:
+  - imaging
+  metadata_columns:
+  - site
+  - tbx_class
+split:
+  name: external
+  params:
+    column: site
+    test_values:
+    - shenzhen
+    - montgomery
+    val_size: 0.15
+model:
+  name: neural
+  params:
+    encoders:
+      imaging:
+        name: timm_vision
+        params:
+          backbone: convnext_tiny
+          pretrained: true
+          drop_rate: 0.2
+    head:
+      dropout: 0.0705
+    image:
+      size: 320
+      augment: true
+      in_chans: 1
+      cache_dir: ${image_cache}
+      cache_size: 512
+training:
+  epochs: 12
+  batch_size: 32
+  num_workers: 4
+  precision: bf16-mixed
+  optimizer:
+    name: adamw
+    lr: 0.000755
+    weight_decay: 0.00476
+    encoder_lr_mult: 0.129
+  scheduler:
+    name: cosine
+    warmup_epochs: 2
+    min_lr_ratio: 0.01
+  early_stopping:
+    monitor: val_loss
+    patience: 4
+  checkpoint:
+    save_top_k: 1
+    save_last: true
+explain:
+  methods:
+  - name: grad_cam
+  samples:
+    split: test
+    n_per_class: 8
+  target_classes: all
+evaluation:
+  n_bootstrap: 1000
+  threshold_selection: sensitivity
+  target_sensitivity: 0.9
+subgroups:
+  columns:
+  - site
+  - tbx_class
+  min_size: 20
+reporting:
+  writers:
+  - json
+  - tables
+  - markdown
+  - html
+  table_format: both
+tuning:
+  enabled: false
+  n_trials: 15
+  timeout_minutes: 240
+  metric: auroc
+  sampler: tpe
+  pruner: median
+  pruner_params:
+    n_startup_trials: 4
+    n_warmup_steps: 3
+  search_space:
+    model.params.image.size:
+      type: categorical
+      choices:
+      - 256
+      - 320
+      - 384
+    training.optimizer.lr:
+      type: float
+      low: 0.0001
+      high: 0.001
+      log: true
+    training.optimizer.weight_decay:
+      type: float
+      low: 0.0001
+      high: 0.1
+      log: true
+    training.optimizer.encoder_lr_mult:
+      type: float
+      low: 0.03
+      high: 1.0
+      log: true
+    model.params.head.dropout:
+      type: float
+      low: 0.0
+      high: 0.5

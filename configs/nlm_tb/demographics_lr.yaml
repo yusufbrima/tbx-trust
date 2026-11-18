@@ -1,0 +1,36 @@
+# Demographics-only baseline (age, sex): how much does the CXR add?
+# Train on Shenzhen, external test on Montgomery.
+name: nlm_tb_demographics_lr
+seed: 42
+paths:
+  dataset: ${TBMXAI_NLM_TB:-~/data/tbmxai/nlm_tb}
+  output_root: ${TBMXAI_OUTPUT_ROOT:-~/tbmxai_runs}
+output_dir: ${output_root}
+
+data:
+  dataset: ${dataset}
+  label_column: tb
+  use: [tabular, images]          # one sample per image, identical to the CXR models
+
+view:
+  modalities: [tabular]
+  metadata_columns: [site, sex, age_group]
+
+split:
+  name: external
+  params: {column: site, test_values: montgomery, val_size: 0.2}
+
+model:
+  name: logistic_regression
+
+explain:
+  methods:
+    - {name: shap}
+    - {name: permutation_importance, params: {n_repeats: 5}}
+  samples: {split: test, n_per_class: 8}
+
+evaluation:
+  n_bootstrap: 1000
+  threshold_selection: youden
+subgroups: {columns: [sex, age_group], min_size: 15}
+reporting: {writers: [json, tables, markdown, html], table_format: both}

@@ -1,0 +1,154 @@
+# Shared-split variant: as configs/transfer/internal/ but with split_seed: 0, so all
+# seeds share one Shenzhen train / validation / internal-test split and vary only initialisation and order.
+# the exact config of transfer/nlm_xrv (seed1/config.yaml) with a held-out Shenzhen
+# internal test split (20 % of patients) reported alongside Montgomery; threshold = 90 % sensitivity
+# on Shenzhen validation.
+paths:
+  dataset: ~/data/tbmxai/nlm_tb
+  output_root: ~/tbmxai_runs
+  image_cache: ~/data/tbmxai/cxr_cache
+name: shared_xrv
+seed: 1
+data:
+  dataset: ~/data/tbmxai/nlm_tb
+  use:
+  - tabular
+  - images
+  sources: []
+  patient_column: patient_id
+  label_column: tb
+  link_columns: []
+  join: inner
+  class_names: null
+view:
+  modalities:
+  - imaging
+  metadata_columns:
+  - site
+  - sex
+  - age_group
+  tabular_columns: null
+  missing_modalities: drop
+  index_policy: all
+  index_time_column: null
+split:
+  name: external
+  params:
+    column: site
+    test_values: montgomery
+    val_size: 0.2
+    internal_test_size: 0.2
+    split_seed: 0
+model:
+  name: neural
+  params:
+    encoders:
+      imaging:
+        name: xrv_densenet
+        params:
+          weights: densenet121-res224-all
+    head:
+      dropout: 0.0705
+    image:
+      size: 224
+      augment: true
+      in_chans: 1
+      cache_dir: ~/data/tbmxai/cxr_cache
+      cache_size: 512
+training:
+  epochs: 40
+  batch_size: 16
+  eval_batch_size: null
+  num_workers: 4
+  device: auto
+  precision: bf16-mixed
+  accumulate_grad_batches: 1
+  grad_clip_norm: 1.0
+  class_weights: balanced
+  label_smoothing: 0.0
+  optimizer:
+    name: adamw
+    lr: 0.000755
+    weight_decay: 0.00476
+    betas:
+    - 0.9
+    - 0.999
+    momentum: 0.9
+    nesterov: true
+    encoder_lr_mult: 0.129
+  scheduler:
+    name: cosine
+    warmup_epochs: 2.0
+    warmup_start_factor: 0.01
+    min_lr_ratio: 0.01
+    step_size: 10
+    gamma: 0.1
+    patience: 3
+  early_stopping:
+    enabled: true
+    monitor: val_loss
+    mode: auto
+    patience: 8
+    min_delta: 0.0
+  checkpoint:
+    enabled: true
+    monitor: null
+    mode: auto
+    save_top_k: 1
+    save_last: true
+    restore_best: true
+  resume_from: null
+  deterministic: false
+  log_every_n_steps: 50
+evaluation:
+  metrics: null
+  threshold: 0.5
+  threshold_selection: sensitivity
+  target_sensitivity: 0.9
+  target_specificity: 0.7
+  calibration: none
+  n_bootstrap: 1000
+  confidence: 0.95
+  bootstrap_unit: patient
+  modality_ablation: false
+  splits:
+  - val
+  - test
+subgroups:
+  columns: []
+  min_size: 20
+  bins: {}
+explain:
+  methods: []
+  samples:
+    split: test
+    n_per_class: 8
+    seed: null
+    file: null
+  target_classes: all
+reporting:
+  writers:
+  - json
+  - tables
+  - markdown
+  - html
+  save_predictions: true
+  table_format: csv
+tuning:
+  enabled: false
+  n_trials: 30
+  timeout_minutes: null
+  metric: auroc
+  direction: auto
+  sampler: tpe
+  sampler_params: {}
+  pruner: median
+  pruner_params: {}
+  storage: null
+  study_name: null
+  search_space: {}
+  n_jobs: 1
+protocol:
+  path: null
+  use_split: true
+  use_xai_samples: true

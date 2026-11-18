@@ -1,0 +1,59 @@
+# Shenzhen -> Montgomery, DenseNet-121 initialised from MIMIC CheXpert pretraining (fine-tuned),
+# with the tuned DenseNet settings used for nlm_tb_tuned/cxr_densenet_seeds.
+# Data: bash scripts/nlm_tb/01_download.sh && bash scripts/nlm_tb/02_build.sh
+name: nlm_tb_cxr_densenet_mimicpt
+seed: 42
+paths:
+  dataset: ${TBMXAI_NLM_TB:-~/data/tbmxai/nlm_tb}
+  output_root: ${TBMXAI_OUTPUT_ROOT:-~/tbmxai_runs}
+  pretrain_root: ${TBMXAI_PRETRAIN:-~/tbmxai_runs/pretrain}
+  image_cache: ${TBMXAI_IMAGE_CACHE:-~/data/tbmxai/cxr_cache}
+output_dir: ${output_root}
+
+data:
+  dataset: ${dataset}
+  label_column: tb
+  use: [tabular, images]          # same samples for every NLM model
+
+view:
+  modalities: [imaging]
+  metadata_columns: [site, sex, age_group]
+
+split:
+  name: external                  # test = every Montgomery image; Shenzhen → train / val
+  params: {column: site, test_values: montgomery, val_size: 0.2}
+
+model:
+  name: neural
+  params:
+    encoders:
+      imaging:
+        name: timm_vision
+        params: {backbone: densenet121, pretrained: false, checkpoint: "${pretrain_root}/mimic_chexpert_densenet121/backbone.pt", drop_rate: 0.2}
+    head: {dropout: 0.158}
+    image: {size: 384, augment: true, in_chans: 1, cache_dir: "${image_cache}", cache_size: 512}
+
+training:
+  epochs: 40
+  batch_size: 16
+  num_workers: 4
+  precision: bf16-mixed
+  optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 0.007, encoder_lr_mult: 0.531}
+  scheduler: {name: cosine, warmup_epochs: 2, min_lr_ratio: 0.01}
+  early_stopping: {monitor: val_loss, patience: 8}   # val loss: less noisy than AUROC on 133 images
+  checkpoint: {save_top_k: 1, save_last: true}
+
+explain:
+  methods:
+    - {name: grad_cam}
+    - {name: integrated_gradients}
+  samples: {split: test, n_per_class: 8}
+  target_classes: all
+
+evaluation:
+  n_bootstrap: 1000
+  threshold_selection: youden   # operating point chosen on Shenzhen validation, applied to Montgomery
+
+# bash scripts/nlm_tb/04_tune.sh  (or: tbmxai tune configs/nlm_tb/cxr_densenet.yaml)
+# Trials train on Shenzhen-train and are scored on Shenzhen-validation; Montgomery is used once,
+# after refitting the best parameters.

@@ -1,0 +1,81 @@
+# CXR + demographics (age, sex) fusion: train on Shenzhen, external test on Montgomery.
+name: nlm_tb_multimodal
+seed: 42
+paths:
+  dataset: ${TBMXAI_NLM_TB:-~/data/tbmxai/nlm_tb}
+  output_root: ${TBMXAI_OUTPUT_ROOT:-~/tbmxai_runs}
+  image_cache: ${TBMXAI_IMAGE_CACHE:-~/data/tbmxai/cxr_cache}
+output_dir: ${output_root}
+
+data:
+  dataset: ${dataset}
+  label_column: tb
+  use: [tabular, images]
+
+view:
+  modalities: [imaging, tabular]
+  metadata_columns: [site, sex, age_group]
+  missing_modalities: keep          # a few readings lack age/sex
+
+split:
+  name: external
+  params: {column: site, test_values: montgomery, val_size: 0.2}
+
+model:
+  name: neural
+  params:
+    encoders:
+      imaging:
+        name: timm_vision
+        params: {backbone: densenet121, pretrained: true, drop_rate: 0.2}
+      tabular:
+        name: mlp_tabular
+        params: {hidden_dims: [32], dropout: 0.1}
+    fusion:
+      name: late                # per-input heads, weighted logits: age/sex cannot be ignored
+      params: {}                # (gated / concat end-to-end learned to drop age/sex here)
+    head: {dropout: 0.2}
+    image: {size: 320, augment: true, in_chans: 1, cache_dir: "${image_cache}", cache_size: 512}
+    modality_dropout: {tabular: 0.2}
+
+training:
+  epochs: 40
+  batch_size: 16
+  num_workers: 4
+  precision: bf16-mixed
+  optimizer: {name: adamw, lr: 3.0e-4, weight_decay: 0.01, encoder_lr_mult: 0.1}
+  scheduler: {name: cosine, warmup_epochs: 2, min_lr_ratio: 0.01}
+  early_stopping: {monitor: val_loss, patience: 8}   # val loss: less noisy than AUROC on 133 images
+  checkpoint: {save_top_k: 1, save_last: true}
+
+explain:
+  methods:
+    - {name: grad_cam}
+    - {name: integrated_gradients}
+  samples: {split: test, n_per_class: 8}
+  target_classes: all
+
+evaluation:
+  n_bootstrap: 1000
+  modality_ablation: true
+  threshold_selection: youden
+
+tuning:                         # bash scripts/nlm_tb/04_tune.sh
+  enabled: false
+  n_trials: 30
+  timeout_minutes: 90
+  metric: auroc
+  sampler: tpe
+  pruner: median
+  pruner_params: {n_startup_trials: 5, n_warmup_steps: 5}
+  search_space:
+    model.params.fusion.name:                      {type: categorical, choices: [late, gated, concat]}
+    model.params.modality_dropout.tabular:         {type: float, low: 0.0, high: 0.4}
+    model.params.encoders.imaging.params.backbone: {type: categorical, choices: [densenet121, resnet50, convnext_tiny]}
+    model.params.image.size:                       {type: categorical, choices: [256, 320, 384]}
+    training.optimizer.lr:                         {type: float, low: 1.0e-4, high: 1.0e-3, log: true}
+    training.optimizer.weight_decay:               {type: float, low: 1.0e-4, high: 1.0e-1, log: true}
+    training.optimizer.encoder_lr_mult:            {type: float, low: 0.03, high: 1.0, log: true}
+    model.params.head.dropout:                     {type: float, low: 0.0, high: 0.5}
+subgroups: {columns: [sex, age_group], min_size: 15}
+reporting: {writers: [json, tables, markdown, html], table_format: both}
