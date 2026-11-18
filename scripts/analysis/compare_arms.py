@@ -34,7 +34,7 @@ COMPARISONS = [
     ("C1", "confirmatory", "MIMIC vs ImageNet init, ConvNeXt-T (Shenzhen-trained)",
      "nlm_tb_tuned/cxr_convnext_seeds/seed*", "transfer/nlm_convnext_mimicpt/seed*", "montgomery"),
     ("C1", "confirmatory", "MIMIC vs ImageNet init, ConvNeXt-T (Shenzhen-trained)",
-     "multisite/cxr_convnext_from_shenzhen/seed*", "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*", "tbx11k"),
+     "multisite/cxr_convnext_from_shenzhen/seed[1-3]", "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]", "tbx11k"),
     ("C2", "confirmatory", "Frozen vs fine-tuned MIMIC ConvNeXt-T",
      "transfer/nlm_convnext_mimicpt/seed*", "transfer/nlm_convnext_mimicpt_frozen/seed*", "montgomery"),
     ("C3", "supporting", "ConvNeXt-T vs DenseNet-121 (ImageNet, tuned)",
@@ -52,15 +52,15 @@ COMPARISONS = [
     ("C7", "exploratory", "TorchXRayVision vs MIMIC-pretrained ConvNeXt-T",
      "transfer/nlm_convnext_mimicpt/seed*", "transfer/nlm_xrv/seed*", "montgomery"),
     ("C7", "exploratory", "TorchXRayVision vs MIMIC-pretrained ConvNeXt-T",
-     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*", "transfer/multisite_xrv_from_shenzhen/seed*", "tbx11k"),
+     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]", "transfer/multisite_xrv_from_shenzhen/seed*", "tbx11k"),
     ("C7", "exploratory", "RAD-DINO (fine-tuned) vs MIMIC-pretrained ConvNeXt-T",
      "transfer/nlm_convnext_mimicpt/seed*", "transfer/nlm_raddino/seed*", "montgomery"),
     ("C7", "exploratory", "RAD-DINO (fine-tuned) vs MIMIC-pretrained ConvNeXt-T",
-     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*", "transfer/multisite_raddino_from_shenzhen/seed*", "tbx11k"),
+     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]", "transfer/multisite_raddino_from_shenzhen/seed*", "tbx11k"),
     ("C7", "exploratory", "RAD-DINO (frozen) vs MIMIC-pretrained ConvNeXt-T",
      "transfer/nlm_convnext_mimicpt/seed*", "transfer/nlm_raddino_frozen/seed*", "montgomery"),
     ("C7", "exploratory", "RAD-DINO (frozen) vs MIMIC-pretrained ConvNeXt-T",
-     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*", "transfer/multisite_raddino_frozen_from_shenzhen/seed*", "tbx11k"),
+     "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]", "transfer/multisite_raddino_frozen_from_shenzhen/seed*", "tbx11k"),
 ]
 
 

@@ -92,7 +92,7 @@ ARMS = [
         False,
         {
             "sz_mont": "nlm_tb_tuned/cxr_convnext_seeds/seed*",
-            "sz_tbx": "multisite/cxr_convnext_from_shenzhen/seed*",
+            "sz_tbx": "multisite/cxr_convnext_from_shenzhen/seed[1-3]",
             "tbx_sz": "multisite_retuned/imagenet/seed*",
         },
     ),
@@ -102,7 +102,7 @@ ARMS = [
         False,
         {
             "sz_mont": "transfer/nlm_convnext_mimicpt/seed*",
-            "sz_tbx": "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*",
+            "sz_tbx": "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]",
             "tbx_sz": "multisite_retuned/mimic/seed*",
         },
     ),

@@ -56,11 +56,11 @@ ARMS = {
     "DenseNet-121, MIMIC, frozen": {"montgomery": "transfer/nlm_densenet_mimicpt_frozen/seed*"},
     "ConvNeXt-T, ImageNet": {
         "montgomery": "nlm_tb_tuned/cxr_convnext_seeds/seed*",
-        "tbx11k": "multisite/cxr_convnext_from_shenzhen/seed*",
+        "tbx11k": "multisite/cxr_convnext_from_shenzhen/seed[1-3]",
     },
     "ConvNeXt-T, MIMIC": {
         "montgomery": "transfer/nlm_convnext_mimicpt/seed*",
-        "tbx11k": "transfer/multisite_convnext_mimicpt_from_shenzhen/seed*",
+        "tbx11k": "transfer/multisite_convnext_mimicpt_from_shenzhen/seed[1-3]",
     },
     "ConvNeXt-T, MIMIC, frozen": {"montgomery": "transfer/nlm_convnext_mimicpt_frozen/seed*"},
     "TorchXRayVision": {
@@ -312,9 +312,14 @@ def contrasts(out: Path, b: int) -> None:
         if site is None:
             continue  # comparisons without a TB test site are not part of this analysis
         mats, ys = [], None
+        if cid == "C1" and site == "tbx11k":
+            # the two C1 arms on TBX11K were trained with seeds 4-10 as well, for this
+            # training-variance analysis only; the pre-specified analysis keeps seeds 1-3
+            pa, pb = pa.replace("seed[1-3]", "seed*"), pb.replace("seed[1-3]", "seed*")
         for pattern in (pa, pb):
             frames = []
-            for run in sorted(glob.glob(str(R / pattern))):
+            runs = glob.glob(str(R / pattern))
+            for run in sorted(runs, key=lambda r: int(Path(r).name.removeprefix("seed"))):
                 d = read(Path(run), "test")
                 if "site" in d:
                     d = d[d["site"] == site]
